@@ -56,6 +56,27 @@ if not errorlevel 1 (
 for /f %%b in ('git rev-parse --abbrev-ref HEAD') do set BRANCH=%%b
 if "%BRANCH%"=="" set BRANCH=main
 
+git remote get-url origin >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo No existe remoto "origin" configurado.
+  set /p REMOTE_URL=Escribe la URL de tu repositorio (https://... o git@...): 
+  if "%REMOTE_URL%"=="" (
+    echo ERROR: No se proporciono URL de remoto.
+    echo.
+    pause
+    exit /b 1
+  )
+
+  git remote add origin "%REMOTE_URL%"
+  if errorlevel 1 (
+    echo ERROR: No se pudo agregar el remoto origin.
+    echo.
+    pause
+    exit /b 1
+  )
+)
+
 echo.
 echo Creando commit...
 git commit -m "%COMMIT_MSG%"
@@ -68,7 +89,7 @@ if errorlevel 1 (
 
 echo.
 echo Haciendo push a origin/%BRANCH% ...
-git push origin %BRANCH%
+git push -u origin %BRANCH%
 if errorlevel 1 (
   echo ERROR: Fallo git push. Revisa credenciales, rama remota o conexion.
   echo.
