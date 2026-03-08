@@ -1,0 +1,10 @@
+body {
+  margin: 0;
+  font-family: 'Segoe UI Variable', 'Trebuchet MS', Verdana, sans-serif;
+  background: radial-gradient(circle at top left, #fff6dd, #f3f5f8 52%, #e8f6f4);
+  color: #1f2933;
+  min-width: 320px;
+  min-height: 100vh;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}

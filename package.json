@@ -1,0 +1,61 @@
+{
+  "name": "sistema-punto-de-venta-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev --",
+    "server": "npm --prefix backend run dev",
+    "dev:full": "concurrently \"npm run server\" \"npm run dev -- --port 5174 --strictPort\"",
+    "build": "npm --prefix frontend run build",
+    "lint": "npm --prefix frontend run lint",
+    "preview": "npm --prefix frontend run preview",
+    "desktop:start": "npm run build && electron .",
+    "desktop:installer": "npm run build && electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electron": "^40.8.0",
+    "electron-builder": "^26.8.1",
+    "npm-run-all": "^4.1.5"
+  },
+  "description": "Workspace raiz para frontend y backend del Sistema Punto de Venta.",
+  "main": "desktop/main.cjs",
+  "build": {
+    "appId": "com.menvar.pos",
+    "productName": "Sistema Punto de Venta",
+    "artifactName": "Sistema-Punto-de-Venta-Setup-${version}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**/*",
+      "frontend/dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "desktop/assets/pos-icon.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "installerIcon": "desktop/assets/pos-icon.ico",
+      "uninstallerIcon": "desktop/assets/pos-icon.ico",
+      "installerHeaderIcon": "desktop/assets/pos-icon.ico",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
