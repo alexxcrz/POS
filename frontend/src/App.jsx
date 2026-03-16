@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import JsBarcode from 'jsbarcode'
+import Recetas from './pages/Recetas/Recetas'
 import './App.css'
 
 const PRODUCT_STORAGE_KEY = 'pos_products'
@@ -24,6 +25,19 @@ const POS_PRIMARY_ID_STORAGE_KEY = 'pos_primary_id'
 const POS_SECURITY_STORAGE_KEY = 'pos_security'
 const POS_RECYCLE_BIN_STORAGE_KEY = 'pos_recycle_bin'
 const POS_RECOVERY_WINDOW_DAYS = 15
+const PRODUCT_TYPES = ['general', 'supply', 'recipe']
+const SUPPLY_UNIT_OPTIONS = [
+  { value: 'cda', label: 'Cucharadas (cda)' },
+  { value: 'cdta', label: 'Cucharaditas (cdta)' },
+  { value: 'go', label: 'Gotas (go)' },
+  { value: 'g', label: 'Gramos (g)' },
+  { value: 'kg', label: 'Kilogramos (kg)' },
+  { value: 'l', label: 'Litros (l)' },
+  { value: 'ml', label: 'Mililitros (ml)' },
+  { value: 'oz', label: 'Onzas (oz)' },
+  { value: 'pz', label: 'Piezas (pz)' },
+  { value: 'taza', label: 'Tazas' },
+]
 
 const POS_SCOPED_STORAGE_KEYS = [
   DATA_VERSION_KEY,
@@ -197,7 +211,8 @@ const currency = new Intl.NumberFormat('es-MX', {
 })
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
-const API_STATE_URL = 'http://localhost:8787/api/state'
+const API_BASE_URL = 'http://localhost:8787'
+const API_STATE_URL = `${API_BASE_URL}/api/state`
 
 const addDaysISO = (days) => {
   const date = new Date()
@@ -234,6 +249,50 @@ const mixHex = (hexA, hexB, ratio) => {
   return rgbToHex(aR * (1 - r) + bR * r, aG * (1 - r) + bG * r, aB * (1 - r) + bB * r)
 }
 
+const hexToRgb = (hex) => {
+  const value = String(hex || '').replace('#', '').trim()
+  if (!/^[0-9a-fA-F]{6}$/.test(value)) return { r: 15, g: 118, b: 110 }
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16),
+  }
+}
+
+const buildThemePalette = (primaryRgb, secondaryRgb, tertiaryRgb, intensity) => {
+  const safeIntensity = clamp(Number(intensity) || 1, 0.7, 1.8)
+  const primaryHex = rgbToHex(primaryRgb?.r ?? 15, primaryRgb?.g ?? 118, primaryRgb?.b ?? 110)
+  const secondaryHex = rgbToHex(secondaryRgb?.r ?? 245, secondaryRgb?.g ?? 158, secondaryRgb?.b ?? 11)
+  const tertiaryHex = rgbToHex(tertiaryRgb?.r ?? 31, tertiaryRgb?.g ?? 41, tertiaryRgb?.b ?? 51)
+
+  const brand = mixHex(primaryHex, '#000000', clamp(0.06 + (safeIntensity - 1) * 0.2, 0.02, 0.3))
+  const brandDark = mixHex(brand, '#000000', clamp(0.28 + (safeIntensity - 1) * 0.28, 0.2, 0.58))
+  const accent = mixHex(secondaryHex, brand, clamp(0.08 + (safeIntensity - 1) * 0.34, 0.02, 0.68))
+  const tertiary = mixHex(tertiaryHex, brandDark, clamp(0.1 + (safeIntensity - 1) * 0.22, 0.02, 0.55))
+  const bg1 = mixHex(brand, '#ffffff', clamp(0.88 - (safeIntensity - 1) * 0.3, 0.46, 0.94))
+  const bg2 = mixHex(accent, '#ffffff', clamp(0.91 - (safeIntensity - 1) * 0.34, 0.52, 0.95))
+  const card = mixHex(tertiary, '#ffffff', clamp(0.93 - (safeIntensity - 1) * 0.28, 0.58, 0.97))
+  const line = mixHex(brand, '#ffffff', clamp(0.72 - (safeIntensity - 1) * 0.3, 0.32, 0.86))
+  const ink = mixHex(tertiary, '#111827', clamp(0.6 + (safeIntensity - 1) * 0.2, 0.4, 0.88))
+  const inkSoft = mixHex(ink, '#ffffff', clamp(0.25 + (safeIntensity - 1) * 0.08, 0.18, 0.4))
+
+  return {
+    bg1,
+    bg2,
+    ink,
+    inkSoft,
+    brand,
+    brandDark,
+    accent,
+    tertiary,
+    line,
+    card,
+    heroA: mixHex(brand, '#ffffff', clamp(0.82 - (safeIntensity - 1) * 0.4, 0.34, 0.9)),
+    heroB: mixHex(accent, '#ffffff', clamp(0.78 - (safeIntensity - 1) * 0.44, 0.28, 0.9)),
+    heroBorder: mixHex(brand, '#ffffff', clamp(0.66 - (safeIntensity - 1) * 0.34, 0.22, 0.78)),
+  }
+}
+
 const rgbToHsl = (r, g, b) => {
   const rr = r / 255
   const gg = g / 255
@@ -259,6 +318,9 @@ const emptyProductForm = {
   name: '',
   brand: '',
   supplier: '',
+  unit: '',
+  productType: 'general',
+  recipeIngredients: [],
   category: 'General',
   cost: '',
   price: '',
@@ -301,6 +363,23 @@ const emptySupplyOrderForm = {
   daysBetweenPayments: '30',
 }
 
+const emptySupplyWizardForm = {
+  code: '',
+  name: '',
+  brand: '',
+  supplier: '',
+  category: 'General',
+}
+
+const emptySupplyCreateForm = {
+  code: '',
+  name: '',
+  supplier: '',
+  unit: '',
+  quantity: '',
+  totalCost: '',
+}
+
 const createManualOrderLine = () => ({
   id: crypto.randomUUID(),
   entryType: 'existing',
@@ -310,6 +389,16 @@ const createManualOrderLine = () => ({
   manualCategory: 'General',
   manualSuggestedPrice: '',
   quantity: '1',
+})
+
+const createRecipeIngredientLine = () => ({
+  id: crypto.randomUUID(),
+  supplyProductId: '',
+  quantity: '1',
+})
+
+const createEmptyRecipeWizardForm = () => ({
+  ingredients: [createRecipeIngredientLine()],
 })
 
 const hashPassword = (value) => {
@@ -572,21 +661,40 @@ const TicketPreview = ({ sale, settings, isEmpty, hidePendingNotice = false, bar
   )
 }
 
-const normalizeProduct = (raw, index) => ({
-  id: raw.id ?? crypto.randomUUID(),
-  code: String(raw.code ?? `P${index + 1}`).trim().toUpperCase(),
-  name: String(raw.name ?? '').trim(),
-  brand: String(raw.brand ?? '').trim(),
-  supplier: String(raw.supplier ?? '').trim(),
-  category: String(raw.category ?? 'General').trim(),
-  cost: Number(raw.cost ?? 0),
-  price: Number(raw.price ?? 0),
-  stock: Number(raw.stock ?? 0),
-  minStock: Number(raw.minStock ?? 5),
-  locationArea: String(raw.locationArea ?? '').trim(),
-  locationBin: String(raw.locationBin ?? '').trim(),
-  imageUrl: String(raw.imageUrl ?? '').trim(),
-})
+const normalizeProduct = (raw, index) => {
+  const normalizedProductType = PRODUCT_TYPES.includes(String(raw.productType))
+    ? String(raw.productType)
+    : 'general'
+  const normalizedStock = Number(raw.stock ?? 0)
+
+  return {
+    id: raw.id ?? crypto.randomUUID(),
+    code: String(raw.code ?? `P${index + 1}`).trim().toUpperCase(),
+    name: String(raw.name ?? '').trim(),
+    brand: String(raw.brand ?? '').trim(),
+    supplier: String(raw.supplier ?? '').trim(),
+    unit: String(raw.unit ?? '').trim(),
+    productType: normalizedProductType,
+    category: String(raw.category ?? 'General').trim(),
+    cost: Number(raw.cost ?? 0),
+    price: Number(raw.price ?? 0),
+    stock: normalizedStock,
+    totalStock: Number(raw.totalStock ?? normalizedStock),
+    minStock: Number(raw.minStock ?? 5),
+    locationArea: String(raw.locationArea ?? '').trim(),
+    locationBin: String(raw.locationBin ?? '').trim(),
+    imageUrl: String(raw.imageUrl ?? '').trim(),
+    recipeIngredients: Array.isArray(raw.recipeIngredients)
+      ? raw.recipeIngredients
+          .map((ingredient) => ({
+            id: String(ingredient?.id || crypto.randomUUID()),
+            supplyProductId: String(ingredient?.supplyProductId || ''),
+            quantity: String(ingredient?.quantity ?? '1'),
+          }))
+          .filter((ingredient) => ingredient.supplyProductId)
+      : [],
+  }
+}
 
 const normalizeUser = (raw, index) => ({
   id: raw.id ?? crypto.randomUUID(),
@@ -607,6 +715,32 @@ const readProducts = (posId = 'primary') => {
   const data = readStorageAny(keys, [])
   if (!Array.isArray(data)) return []
   return data.map(normalizeProduct)
+}
+
+const normalizeProductsPreservingSupplyTotals = (rawProducts, previousProducts = []) => {
+  const list = Array.isArray(rawProducts) ? rawProducts : []
+  const prevById = new Map(
+    (Array.isArray(previousProducts) ? previousProducts : []).map((item) => [String(item?.id), item]),
+  )
+
+  return list.map((raw, index) => {
+    const normalized = normalizeProduct(raw, index)
+    if (normalized.productType !== 'supply') return normalized
+
+    const prev = prevById.get(String(normalized.id))
+    const hasRawTotal = raw?.totalStock !== undefined && raw?.totalStock !== null && raw?.totalStock !== ''
+    const rawTotal = Number(raw?.totalStock)
+    const prevTotal = Number(prev?.totalStock ?? prev?.stock ?? normalized.stock)
+
+    let total = hasRawTotal && Number.isFinite(rawTotal) ? rawTotal : prevTotal
+    if (!Number.isFinite(total) || total < 0) total = normalized.stock
+    if (total < normalized.stock) total = normalized.stock
+
+    return {
+      ...normalized,
+      totalStock: total,
+    }
+  })
 }
 
 const readUsers = () => {
@@ -731,6 +865,9 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [showAlerts, setShowAlerts] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
+  const [showSupplyModal, setShowSupplyModal] = useState(false)
+  const [showSupplyWizardModal, setShowSupplyWizardModal] = useState(false)
+  const [showRecipeWizardModal, setShowRecipeWizardModal] = useState(false)
   const [showCutModal, setShowCutModal] = useState(false)
   const [showOpenCashModal, setShowOpenCashModal] = useState(false)
   const [showSupplierModal, setShowSupplierModal] = useState(false)
@@ -748,8 +885,17 @@ function App() {
   const [showPosUnlockPassword, setShowPosUnlockPassword] = useState(false)
   const [shouldPromptPosPicker, setShouldPromptPosPicker] = useState(false)
   const [appMessageModal, setAppMessageModal] = useState(null)
+  const [recipeDeleteModal, setRecipeDeleteModal] = useState({
+    open: false,
+    product: null,
+    quantity: '1',
+  })
   const [newProduct, setNewProduct] = useState(emptyProductForm)
+  const [supplyCreateForm, setSupplyCreateForm] = useState(emptySupplyCreateForm)
+  const [supplyWizardForm, setSupplyWizardForm] = useState(emptySupplyWizardForm)
+  const [recipeWizardForm, setRecipeWizardForm] = useState(() => createEmptyRecipeWizardForm())
   const [editingProductId, setEditingProductId] = useState('')
+  const [productModalType, setProductModalType] = useState('general')
   const [digitalTicketSale, setDigitalTicketSale] = useState(null)
   const [digitalTicketHidePending, setDigitalTicketHidePending] = useState(false)
   const [digitalTicketQrDataUrl, setDigitalTicketQrDataUrl] = useState('')
@@ -775,6 +921,8 @@ function App() {
     items: [createManualOrderLine()],
   })
   const [inventorySearchTerm, setInventorySearchTerm] = useState('')
+  const [supplyInventorySearchTerm, setSupplyInventorySearchTerm] = useState('')
+  const [recipeInventorySearchTerm, setRecipeInventorySearchTerm] = useState('')
   const [cutForm, setCutForm] = useState({
     date: todayISO(),
     openingCash: '0',
@@ -812,8 +960,12 @@ function App() {
   const scanBufferRef = useRef('')
   const scanTimerRef = useRef(null)
   const scanNoticeTimerRef = useRef(null)
+  const pendingTicketSettingsSyncRef = useRef(false)
+  const applyingServerTicketSettingsRef = useRef(false)
   const serverSyncReadyRef = useRef(false)
   const serverSyncTimerRef = useRef(null)
+  const serverStateUpdatedAtRef = useRef('')
+  const recipeDeleteIntentRef = useRef({ id: '', at: 0 })
   const autoDownloadedTicketRef = useRef('')
   const pendingFulfillButtonRef = useRef(null)
 
@@ -838,6 +990,11 @@ function App() {
   useEffect(() => {
     localStorage.setItem(POS_PRIMARY_ID_STORAGE_KEY, primaryPosId)
   }, [primaryPosId])
+
+  useEffect(() => {
+    if (applyingServerTicketSettingsRef.current) return
+    pendingTicketSettingsSyncRef.current = true
+  }, [ticketSettings])
 
   useEffect(() => {
     localStorage.setItem(POS_SECURITY_STORAGE_KEY, JSON.stringify(posSecurity))
@@ -988,11 +1145,17 @@ function App() {
     setDeletedPosBin(readPosRecycleBin())
     setCart([])
     setSearchTerm('')
+    setInventorySearchTerm('')
+    setSupplyInventorySearchTerm('')
+    setRecipeInventorySearchTerm('')
     setPaymentMethod('efectivo')
     setShowAlerts(false)
     setShowCutModal(false)
     setShowOpenCashModal(false)
     setShowProductModal(false)
+    setShowSupplyModal(false)
+    setShowSupplyWizardModal(false)
+    setShowRecipeWizardModal(false)
     setShowSupplierModal(false)
     setShowManualOrderModal(false)
     setShowDigitalTicketModal(false)
@@ -1022,6 +1185,9 @@ function App() {
       notes: '',
     })
     setNewCategoryName('')
+    setSupplyCreateForm(emptySupplyCreateForm)
+    setSupplyWizardForm(emptySupplyWizardForm)
+    setRecipeWizardForm(createEmptyRecipeWizardForm())
   }, [activePosId, primaryPosId])
 
   useEffect(() => {
@@ -1061,9 +1227,16 @@ function App() {
       return
     }
 
+    const intensity = clamp(Number(ticketSettings.logoThemeIntensity) || 1, 0.7, 1.8)
+    const fallbackPrimary = hexToRgb(defaultThemePalette.brand)
+    const fallbackSecondary = hexToRgb(defaultThemePalette.accent)
+    const applyFallbackPalette = () => {
+      setLogoThemePalette(buildThemePalette(fallbackPrimary, fallbackSecondary, fallbackPrimary, intensity))
+    }
+
     const logoUrl = ticketSettings.logoUrl
     if (!logoUrl) {
-      setLogoThemePalette(defaultThemePalette)
+      applyFallbackPalette()
       return
     }
 
@@ -1110,31 +1283,25 @@ function App() {
         const secondary = sorted[1]?.[0]
           ? sorted[1][0].split(',').map((n) => Number(n))
           : primary
+        const tertiary = sorted[2]?.[0]
+          ? sorted[2][0].split(',').map((n) => Number(n))
+          : secondary
 
-        const intensity = clamp(Number(ticketSettings.logoThemeIntensity) || 1, 0.7, 1.8)
-        const brandBase = rgbToHex(primary[0], primary[1], primary[2])
-        const brand = mixHex(brandBase, '#000000', clamp(0.08 + (intensity - 1) * 0.1, 0.03, 0.2))
-        const brandDark = mixHex(brand, '#000000', clamp(0.34 + (intensity - 1) * 0.14, 0.24, 0.52))
-        const accentBase = rgbToHex(secondary[0], secondary[1], secondary[2])
-        const accent = mixHex(accentBase, brand, clamp(0.2 + (intensity - 1) * 0.22, 0.08, 0.5))
-
-        const palette = {
-          brand,
-          brandDark,
-          accent,
-          heroA: mixHex(brand, '#ffffff', clamp(0.78 - (intensity - 1) * 0.22, 0.52, 0.88)),
-          heroB: mixHex(accent, '#ffffff', clamp(0.72 - (intensity - 1) * 0.26, 0.46, 0.86)),
-          heroBorder: mixHex(brand, '#ffffff', clamp(0.6 - (intensity - 1) * 0.16, 0.38, 0.74)),
-        }
+        const palette = buildThemePalette(
+          { r: Number(primary[0] || 15), g: Number(primary[1] || 118), b: Number(primary[2] || 110) },
+          { r: Number(secondary[0] || primary[0] || 245), g: Number(secondary[1] || primary[1] || 158), b: Number(secondary[2] || primary[2] || 11) },
+          { r: Number(tertiary[0] || secondary[0] || 31), g: Number(tertiary[1] || secondary[1] || 41), b: Number(tertiary[2] || secondary[2] || 51) },
+          intensity,
+        )
 
         if (!cancelled) setLogoThemePalette(palette)
       } catch {
-        if (!cancelled) setLogoThemePalette(defaultThemePalette)
+        if (!cancelled) applyFallbackPalette()
       }
     }
 
     image.onerror = () => {
-      if (!cancelled) setLogoThemePalette(defaultThemePalette)
+      if (!cancelled) applyFallbackPalette()
     }
 
     image.src = logoUrl
@@ -1145,16 +1312,43 @@ function App() {
   }, [ticketSettings.logoThemeIntensity, ticketSettings.logoUrl, ticketSettings.useLogoTheme])
 
   const appThemeStyle = useMemo(
-    () => ({
-      '--brand': logoThemePalette.brand,
-      '--brand-dark': logoThemePalette.brandDark,
-      '--accent': logoThemePalette.accent,
-      '--hero-a': logoThemePalette.heroA,
-      '--hero-b': logoThemePalette.heroB,
-      '--hero-border': logoThemePalette.heroBorder,
-    }),
+    () => {
+      const brandRgb = hexToRgb(logoThemePalette.brand)
+      return {
+        '--brand': logoThemePalette.brand,
+        '--brand-dark': logoThemePalette.brandDark,
+        '--accent': logoThemePalette.accent,
+        '--tertiary': logoThemePalette.tertiary,
+        '--bg-1': logoThemePalette.bg1,
+        '--bg-2': logoThemePalette.bg2,
+        '--ink': logoThemePalette.ink,
+        '--ink-soft': logoThemePalette.inkSoft,
+        '--line': logoThemePalette.line,
+        '--card': logoThemePalette.card,
+        '--hero-a': logoThemePalette.heroA,
+        '--hero-b': logoThemePalette.heroB,
+        '--hero-border': logoThemePalette.heroBorder,
+        '--brand-soft': mixHex(logoThemePalette.brand, '#ffffff', 0.9),
+        '--brand-soft-2': mixHex(logoThemePalette.brand, '#ffffff', 0.8),
+        '--accent-soft': mixHex(logoThemePalette.accent, '#ffffff', 0.85),
+        '--panel-bg': mixHex(logoThemePalette.brand, '#ffffff', 0.94),
+        '--panel-border': mixHex(logoThemePalette.brand, '#ffffff', 0.72),
+        '--input-border': mixHex(logoThemePalette.brand, '#d8dee5', 0.42),
+        '--brand-rgb': `${brandRgb.r}, ${brandRgb.g}, ${brandRgb.b}`,
+      }
+    },
     [logoThemePalette],
   )
+
+  useEffect(() => {
+    const bodyBackground = [
+      `radial-gradient(circle at 14% 12%, ${mixHex(logoThemePalette.brand, '#ffffff', 0.78)}, transparent 34%)`,
+      `radial-gradient(circle at 88% 86%, ${mixHex(logoThemePalette.accent, '#ffffff', 0.82)}, transparent 30%)`,
+      `linear-gradient(160deg, ${mixHex(logoThemePalette.heroA, '#ffffff', 0.45)} 0%, ${mixHex(logoThemePalette.heroB, '#ffffff', 0.52)} 54%, ${mixHex(logoThemePalette.brand, '#ffffff', 0.9)} 100%)`,
+    ].join(', ')
+
+    document.body.style.background = bodyBackground
+  }, [logoThemePalette])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -1186,10 +1380,13 @@ function App() {
 
         const payload = await response.json()
         const state = payload?.state
+        serverStateUpdatedAtRef.current = String(payload?.updatedAt || '')
 
         if (!cancelled && state && typeof state === 'object') {
           if (Array.isArray(state.users)) setUsers(state.users.map(normalizeUser))
-          if (Array.isArray(state.products)) setProducts(state.products.map(normalizeProduct))
+          if (Array.isArray(state.products)) {
+            setProducts((current) => normalizeProductsPreservingSupplyTotals(state.products, current))
+          }
           if (Array.isArray(state.sales)) setSales(state.sales.map(normalizeSale))
           if (Array.isArray(state.cuts)) setCuts(state.cuts)
           if (Array.isArray(state.suppliers)) setSuppliers(state.suppliers.map(normalizeSupplier))
@@ -1198,7 +1395,7 @@ function App() {
           }
           if (state.cashBox && typeof state.cashBox === 'object') setCashBox(state.cashBox)
           if (state.ticketSettings && typeof state.ticketSettings === 'object') {
-            setTicketSettings(normalizeTicketSettings(state.ticketSettings))
+            applyServerTicketSettings(state.ticketSettings)
           }
         }
 
@@ -1227,7 +1424,7 @@ function App() {
 
     serverSyncTimerRef.current = setTimeout(async () => {
       try {
-        await fetch(API_STATE_URL, {
+        const response = await fetch(API_STATE_URL, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1243,6 +1440,11 @@ function App() {
             },
           }),
         })
+        const payload = await response.json().catch(() => null)
+        if (payload?.updatedAt) {
+          serverStateUpdatedAtRef.current = String(payload.updatedAt)
+        }
+        pendingTicketSettingsSyncRef.current = false
       } catch {
         setServerMode('offline')
       }
@@ -1263,6 +1465,54 @@ function App() {
     ticketSettings,
     users,
   ])
+
+  useEffect(() => {
+    if (activePosId !== 'primary') return
+    if (serverMode !== 'online' || !serverSyncReadyRef.current) return
+
+    let cancelled = false
+
+    const pullServerStateIfChanged = async () => {
+      try {
+        const response = await fetch(API_STATE_URL)
+        if (!response.ok) return
+
+        const payload = await response.json()
+        const updatedAt = String(payload?.updatedAt || '')
+        if (!updatedAt || updatedAt === serverStateUpdatedAtRef.current) return
+
+        const state = payload?.state
+        if (!state || typeof state !== 'object' || cancelled) return
+
+        serverStateUpdatedAtRef.current = updatedAt
+        if (Array.isArray(state.users)) setUsers(state.users.map(normalizeUser))
+        if (Array.isArray(state.products)) {
+          setProducts((current) => normalizeProductsPreservingSupplyTotals(state.products, current))
+        }
+        if (Array.isArray(state.sales)) setSales(state.sales.map(normalizeSale))
+        if (Array.isArray(state.cuts)) setCuts(state.cuts)
+        if (Array.isArray(state.suppliers)) setSuppliers(state.suppliers.map(normalizeSupplier))
+        if (Array.isArray(state.purchaseOrders)) {
+          setPurchaseOrders(state.purchaseOrders.map(normalizePurchaseOrder))
+        }
+        if (state.cashBox && typeof state.cashBox === 'object') setCashBox(state.cashBox)
+        if (state.ticketSettings && typeof state.ticketSettings === 'object') {
+          applyServerTicketSettings(state.ticketSettings)
+        }
+      } catch {
+        // Pull is best-effort; keep current local state when unavailable.
+      }
+    }
+
+    const timer = setInterval(() => {
+      pullServerStateIfChanged()
+    }, 2500)
+
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [activePosId, serverMode])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -1377,6 +1627,8 @@ function App() {
       ...(canManagePosControl ? [{ id: 'pos-control', label: 'Control POS' }] : []),
       { id: 'ticket', label: 'Ticket' },
       { id: 'inventory', label: 'Inventario' },
+      { id: 'supplies-inventory', label: 'Insumos' },
+      { id: 'recipes', label: 'Recetas' },
       { id: 'dashboard', label: 'Resumen' },
       { id: 'analytics', label: 'Analítica' },
       { id: 'purchase-orders', label: 'Órdenes de compra' },
@@ -1449,20 +1701,28 @@ function App() {
     [cart],
   )
 
+  const sellableProducts = useMemo(
+    () => products.filter((product) => product.productType !== 'supply'),
+    [products],
+  )
+
   const filteredProducts = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
     if (!query) return []
 
-    return products.filter((product) => {
+    return sellableProducts.filter((product) => {
       const searchable = `${product.code} ${product.name} ${product.brand} ${product.supplier} ${product.category} ${product.locationArea} ${product.locationBin}`.toLowerCase()
       return searchable.includes(query)
     })
-  }, [products, searchTerm])
+  }, [searchTerm, sellableProducts])
 
   const hasSearchQuery = searchTerm.trim().length > 0
 
   const lowStockProducts = useMemo(
-    () => products.filter((product) => product.stock <= product.minStock),
+    () =>
+      products.filter(
+        (product) => product.productType === 'general' && product.stock <= product.minStock,
+      ),
     [products],
   )
 
@@ -1493,7 +1753,92 @@ function App() {
     return pending.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
   }, [purchaseOrders])
 
-  const alertBadgeCount = lowStockProducts.length + purchaseCreditNotifications.length
+  const recipeSupplyNotifications = useMemo(() => {
+    const suppliesById = products
+      .filter((product) => product.productType === 'supply')
+      .reduce((acc, supply) => {
+        acc[supply.id] = supply
+        return acc
+      }, {})
+
+    const notifications = []
+
+    products
+      .filter((product) => product.productType === 'recipe')
+      .forEach((recipe) => {
+        if (!Array.isArray(recipe.recipeIngredients) || recipe.recipeIngredients.length === 0) {
+          notifications.push({
+            recipeId: recipe.id,
+            recipeCode: recipe.code,
+            recipeName: recipe.name,
+            reason: 'sin-formula',
+            shortages: [],
+            maxUnits: 0,
+          })
+          return
+        }
+
+        const shortages = []
+        const maxUnitsBySupply = []
+
+        recipe.recipeIngredients.forEach((ingredient) => {
+          const supply = suppliesById[String(ingredient.supplyProductId || '')]
+          const requiredQty = Number(ingredient.quantity || 0)
+          if (!supply || !Number.isFinite(requiredQty) || requiredQty <= 0) {
+            shortages.push({
+              id: ingredient.id,
+              code: supply?.code || 'N/A',
+              name: supply?.name || 'Insumo no disponible',
+              requiredQty,
+              availableQty: Number(supply?.stock || 0),
+            })
+            return
+          }
+
+          const availableQty = Number(supply.stock || 0)
+          if (availableQty < requiredQty) {
+            shortages.push({
+              id: ingredient.id,
+              code: supply.code,
+              name: supply.name,
+              requiredQty,
+              availableQty,
+            })
+          }
+
+          maxUnitsBySupply.push(Math.floor(availableQty / requiredQty))
+        })
+
+        const maxUnits =
+          maxUnitsBySupply.length > 0 ? Math.max(0, Math.min(...maxUnitsBySupply)) : 0
+
+        if (shortages.length > 0 || maxUnits <= recipe.minStock) {
+          notifications.push({
+            recipeId: recipe.id,
+            recipeCode: recipe.code,
+            recipeName: recipe.name,
+            reason: shortages.length > 0 ? 'insufficient-supplies' : 'low-capacity',
+            shortages,
+            maxUnits,
+            minStock: Number(recipe.minStock || 0),
+          })
+        }
+      })
+
+    return notifications
+  }, [products])
+
+  const alertBadgeCount =
+    lowStockProducts.length + purchaseCreditNotifications.length + recipeSupplyNotifications.length
+
+  const openRecipeFromAlert = (notice) => {
+    if (!isAdmin) return
+    const query = String(notice?.recipeCode || notice?.recipeName || '').trim()
+    setActiveTab('admin')
+    setAdminSection('recipes')
+    setRecipeInventorySearchTerm(query)
+    setShowAlerts(false)
+  }
 
   const salesAnalytics = useMemo(() => {
     const totalTickets = sales.length
@@ -1533,6 +1878,62 @@ function App() {
       bestSellers,
     }
   }, [sales])
+
+  const supplyInvestmentMetrics = useMemo(() => {
+    const supplyProducts = products.filter((product) => product.productType === 'supply')
+    const supplyIds = new Set(supplyProducts.map((product) => product.id))
+
+    const totalSupplies = supplyProducts.length
+    const totalInvestment = supplyProducts.reduce(
+      (sum, product) => sum + Number(product.totalStock ?? product.stock ?? 0) * Number(product.cost || 0),
+      0,
+    )
+
+    const recoveredInvestment = sales.reduce((sum, sale) => {
+      const recoveredBySale = (sale.items || []).reduce((itemSum, item) => {
+        if (!supplyIds.has(item.id)) return itemSum
+        return itemSum + Number(item.price || 0) * Number(item.quantity || 0)
+      }, 0)
+      return sum + recoveredBySale
+    }, 0)
+
+    const netInvestment = Math.max(0, totalInvestment - recoveredInvestment)
+
+    return {
+      totalSupplies,
+      totalInvestment,
+      recoveredInvestment,
+      netInvestment,
+    }
+  }, [products, sales])
+
+  const recipeInvestmentMetrics = useMemo(() => {
+    const recipeProducts = products.filter((product) => product.productType === 'recipe')
+    const recipeIds = new Set(recipeProducts.map((product) => product.id))
+
+    const totalRecipes = recipeProducts.length
+    const totalInvestment = recipeProducts.reduce(
+      (sum, product) => sum + Number(product.stock || 0) * Number(product.cost || 0),
+      0,
+    )
+
+    const recoveredInvestment = sales.reduce((sum, sale) => {
+      const recoveredBySale = (sale.items || []).reduce((itemSum, item) => {
+        if (!recipeIds.has(item.id)) return itemSum
+        return itemSum + Number(item.price || 0) * Number(item.quantity || 0)
+      }, 0)
+      return sum + recoveredBySale
+    }, 0)
+
+    const netInvestment = Math.max(0, totalInvestment - recoveredInvestment)
+
+    return {
+      totalRecipes,
+      totalInvestment,
+      recoveredInvestment,
+      netInvestment,
+    }
+  }, [products, sales])
 
   const supplierMap = useMemo(() => {
     const map = {}
@@ -1675,6 +2076,105 @@ function App() {
         resolve,
       })
     })
+
+  const reloadStateFromServer = async () => {
+    const stateResponse = await fetch(API_STATE_URL)
+    if (!stateResponse.ok) return
+    const payload = await stateResponse.json()
+    const state = payload?.state
+    if (!state || typeof state !== 'object') return
+
+    if (Array.isArray(state.products)) {
+      setProducts((current) => normalizeProductsPreservingSupplyTotals(state.products, current))
+    }
+    if (Array.isArray(state.sales)) setSales(state.sales.map(normalizeSale))
+    if (Array.isArray(state.cuts)) setCuts(state.cuts)
+    if (Array.isArray(state.suppliers)) setSuppliers(state.suppliers.map(normalizeSupplier))
+    if (Array.isArray(state.purchaseOrders)) {
+      setPurchaseOrders(state.purchaseOrders.map(normalizePurchaseOrder))
+    }
+    if (state.cashBox && typeof state.cashBox === 'object') setCashBox(state.cashBox)
+    if (state.ticketSettings && typeof state.ticketSettings === 'object') {
+      applyServerTicketSettings(state.ticketSettings)
+    }
+    if (payload?.updatedAt) {
+      serverStateUpdatedAtRef.current = String(payload.updatedAt)
+    }
+  }
+
+  const applyServerTicketSettings = (rawSettings) => {
+    if (!rawSettings || typeof rawSettings !== 'object') return
+
+    if (pendingTicketSettingsSyncRef.current) return
+
+    applyingServerTicketSettingsRef.current = true
+    setTicketSettings(normalizeTicketSettings(rawSettings))
+    setTimeout(() => {
+      applyingServerTicketSettingsRef.current = false
+    }, 0)
+  }
+
+  const revertRecipeProduction = async (product, qtyToRevert) => {
+    const recipeIdMatch = String(product?.id || '').match(/^recipe-(.+)$/)
+    const recipeId = recipeIdMatch ? Number(recipeIdMatch[1]) : NaN
+    if (!Number.isFinite(recipeId) || recipeId <= 0) return
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/produccion/revertir`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id_receta: recipeId,
+          cantidad: qtyToRevert,
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        await askForConfirmation(
+          'No se pudo devolver producción',
+          payload?.error || 'No se pudo devolver piezas al inventario de insumos.',
+        )
+        return
+      }
+
+      await reloadStateFromServer()
+    } catch {
+      // Keep local state untouched if backend revert fails.
+    }
+  }
+
+  const openRecipeDeleteModal = (product) => {
+    setRecipeDeleteModal({ open: true, product, quantity: '1' })
+  }
+
+  const closeRecipeDeleteModal = () => {
+    setRecipeDeleteModal({ open: false, product: null, quantity: '1' })
+  }
+
+  const confirmRecipeDeletePieces = async (mode) => {
+    const product = recipeDeleteModal.product
+    if (!product?.id) return
+
+    const currentStock = Math.max(0, Math.floor(Number(product.stock || 0)))
+    if (currentStock <= 0) {
+      closeRecipeDeleteModal()
+      return
+    }
+
+    let qtyToRevert = 0
+    if (mode === 'all') {
+      qtyToRevert = currentStock
+    } else {
+      const parsedQty = Math.floor(Number(recipeDeleteModal.quantity || 0))
+      if (!Number.isFinite(parsedQty) || parsedQty <= 0) return
+      qtyToRevert = Math.min(currentStock, parsedQty)
+    }
+
+    if (qtyToRevert <= 0) return
+    closeRecipeDeleteModal()
+    await revertRecipeProduction(product, qtyToRevert)
+  }
 
   const removePos = async (posId) => {
     if (!posId || posId === 'primary') return
@@ -1907,6 +2407,14 @@ function App() {
     [suppliers],
   )
 
+  const supplyProductOptions = useMemo(
+    () =>
+      products
+        .filter((product) => product.productType === 'supply')
+        .sort((a, b) => a.name.localeCompare(b.name, 'es-MX')),
+    [products],
+  )
+
   const manualOrderProductOptions = useMemo(() => {
     const selectedSupplier = manualOrderForm.supplierName.trim().toLowerCase()
     const list = selectedSupplier
@@ -1954,9 +2462,9 @@ function App() {
     return () => clearTimeout(timer)
   }, [pendingTicketMatch, showPendingTicketModal])
 
-  const groupedInventory = useMemo(() => {
-    const query = inventorySearchTerm.trim().toLowerCase()
-    const filtered = products.filter((product) => {
+  const buildGroupedInventory = (sourceProducts, searchTermValue) => {
+    const query = searchTermValue.trim().toLowerCase()
+    const filtered = sourceProducts.filter((product) => {
       if (!query) return true
       const searchable = `${product.code} ${product.name} ${product.supplier}`.toLowerCase()
       return searchable.includes(query)
@@ -1977,10 +2485,52 @@ function App() {
       acc[supplierName].push(product)
       return acc
     }, {})
-  }, [inventorySearchTerm, products])
+  }
+
+  const groupedGeneralInventory = useMemo(
+    () =>
+      buildGroupedInventory(
+        products.filter((product) => {
+          if (product.productType === 'supply') return false
+          if (product.productType === 'recipe') return Number(product.stock || 0) > 0
+          return true
+        }),
+        inventorySearchTerm,
+      ),
+    [inventorySearchTerm, products],
+  )
+
+  const groupedSupplyInventory = useMemo(
+    () =>
+      buildGroupedInventory(
+        products.filter((product) => product.productType === 'supply'),
+        supplyInventorySearchTerm,
+      ),
+    [products, supplyInventorySearchTerm],
+  )
+
+  const supplyInventoryTableRows = useMemo(() => {
+    const rows = []
+    Object.entries(groupedSupplyInventory).forEach(([supplierName, items]) => {
+      rows.push({ kind: 'supplier', supplierName, id: `supplier-${supplierName}` })
+      items.forEach((product) => rows.push({ kind: 'item', product, id: product.id }))
+    })
+    return rows
+  }, [groupedSupplyInventory])
+
+  const groupedRecipeInventory = useMemo(
+    () =>
+      buildGroupedInventory(
+        products.filter((product) => product.productType === 'recipe'),
+        recipeInventorySearchTerm,
+      ),
+    [products, recipeInventorySearchTerm],
+  )
 
   useEffect(() => {
-    const productsToOrder = products.filter((product) => product.stock <= 5)
+    const productsToOrder = products.filter(
+      (product) => product.productType === 'general' && product.stock <= 5,
+    )
     if (productsToOrder.length === 0) return
 
     setPurchaseOrders((current) => {
@@ -2201,7 +2751,7 @@ function App() {
     body { margin: 0; font-family: 'Courier New', monospace; background: #fff; }
     .ticket-paper { width: ${widthMm}mm; margin: 0 auto; padding: 3mm; font-size: ${fontScale}rem; color: #000; }
     .ticket-head { text-align: center; display: grid; gap: 1mm; }
-    .ticket-logo { width: 20mm; max-height: 20mm; object-fit: contain; margin: 0 auto 1mm; }
+    .ticket-logo { width: 20mm; max-height: 20mm; object-fit: cover; border-radius: 50%; margin: 0 auto 1mm; }
     .ticket-head strong { font-size: 1.1em; }
     .ticket-divider { border-top: 1px dashed #000; margin: 2mm 0; }
     .ticket-paper p { margin: 0 0 1mm; }
@@ -2527,6 +3077,9 @@ function App() {
     setShowOpenCashModal(false)
     setShowCutModal(false)
     setShowProductModal(false)
+    setShowSupplyModal(false)
+    setShowSupplyWizardModal(false)
+    setShowRecipeWizardModal(false)
     setEditingProductId('')
     setShowSupplierModal(false)
     setShowTicketDeliveryModal(false)
@@ -2540,21 +3093,240 @@ function App() {
     setPosUnlockError('')
     closeDigitalTicketModal()
     setEditingSupplierId('')
+    setSupplyCreateForm(emptySupplyCreateForm)
+    setSupplyWizardForm(emptySupplyWizardForm)
+    setRecipeWizardForm(createEmptyRecipeWizardForm())
   }
 
-  const openCreateProductModal = () => {
+  const openCreateProductModal = (productType = 'general') => {
+    const normalizedType = PRODUCT_TYPES.includes(productType) ? productType : 'general'
     setEditingProductId('')
-    setNewProduct(emptyProductForm)
+    setProductModalType(normalizedType)
+    setNewProduct({
+      ...emptyProductForm,
+      productType: normalizedType,
+    })
+    setShowProductModal(true)
+  }
+
+  const openSupplyModal = () => {
+    setSupplyCreateForm(emptySupplyCreateForm)
+    setShowSupplyModal(true)
+  }
+
+  const closeSupplyModal = () => {
+    setShowSupplyModal(false)
+    setSupplyCreateForm(emptySupplyCreateForm)
+  }
+
+  const saveSupply = (event) => {
+    event.preventDefault()
+    const code = String(supplyCreateForm.code || '').trim().toUpperCase()
+    const name = String(supplyCreateForm.name || '').trim()
+    const supplier = String(supplyCreateForm.supplier || '').trim()
+    const unit = String(supplyCreateForm.unit || '').trim()
+    const quantity = Number(supplyCreateForm.quantity)
+    const totalCost = Number(supplyCreateForm.totalCost)
+
+    if (!code || !name || !supplier || !unit) return
+    if (!Number.isFinite(quantity) || quantity <= 0) return
+    if (!Number.isFinite(totalCost) || totalCost < 0) return
+    if (products.some((product) => product.code === code)) return
+
+    const unitCost = quantity > 0 ? totalCost / quantity : 0
+    const payload = {
+      id: crypto.randomUUID(),
+      code,
+      name,
+      brand: '',
+      supplier,
+      unit,
+      productType: 'supply',
+      recipeIngredients: [],
+      category: 'General',
+      cost: Number(unitCost.toFixed(4)),
+      price: Number(unitCost.toFixed(4)),
+      stock: Number(quantity.toFixed(2)),
+      totalStock: Number(quantity.toFixed(2)),
+      minStock: 5,
+      locationArea: '',
+      locationBin: '',
+      imageUrl: '',
+    }
+
+    setProducts((current) => [payload, ...current])
+    setShowSupplyModal(false)
+    setSupplyCreateForm(emptySupplyCreateForm)
+  }
+
+  const removeProduct = async (product) => {
+    if (!product?.id) return
+
+    if (product.productType === 'recipe') {
+      const currentStock = Math.max(0, Math.floor(Number(product.stock || 0)))
+      const now = Date.now()
+      const isDoubleClickDelete =
+        recipeDeleteIntentRef.current.id === product.id && now - recipeDeleteIntentRef.current.at <= 900
+      recipeDeleteIntentRef.current = { id: product.id, at: now }
+
+      if (isDoubleClickDelete) {
+        if (currentStock > 0) {
+          await askForConfirmation(
+            'Primero reduce piezas a 0',
+            'Para eliminar definitivamente del inventario general primero debes devolver todas las piezas al inventario de insumos.',
+          )
+          return
+        }
+        const confirmedPermanent = await askForConfirmation(
+          'Eliminar definitivamente de inventario general',
+          `¿Eliminar definitivamente ${product.code} - ${product.name} del inventario general? La receta seguirá existiendo en módulo Recetas.`,
+        )
+        if (!confirmedPermanent) return
+        setProducts((current) => current.filter((item) => item.id !== product.id))
+        return
+      }
+
+      if (currentStock <= 0) {
+        await askForConfirmation(
+          'Stock en cero',
+          'Esta receta ya tiene stock en 0. Si quieres quitarla definitivamente del inventario general, haz doble clic en Eliminar.',
+        )
+        return
+      }
+
+      openRecipeDeleteModal(product)
+      return
+    }
+
+    const confirmed = await askForConfirmation(
+      'Confirmar eliminación',
+      `¿Eliminar ${product.code} - ${product.name}?`,
+    )
+    if (!confirmed) return
+    setProducts((current) => current.filter((item) => item.id !== product.id))
+  }
+
+  const openSupplyWizardModal = () => {
+    setSupplyWizardForm(emptySupplyWizardForm)
+    setShowSupplyWizardModal(true)
+  }
+
+  const closeSupplyWizardModal = () => {
+    setShowSupplyWizardModal(false)
+    setSupplyWizardForm(emptySupplyWizardForm)
+  }
+
+  const continueSupplyWizard = (event) => {
+    event.preventDefault()
+    const code = supplyWizardForm.code.trim().toUpperCase()
+    const name = supplyWizardForm.name.trim()
+    const category = String(supplyWizardForm.category || '').trim() || 'General'
+
+    if (!code || !name) return
+    if (products.some((product) => product.code === code)) return
+
+    setEditingProductId('')
+    setProductModalType('supply')
+    setNewProduct({
+      ...emptyProductForm,
+      code,
+      name,
+      brand: supplyWizardForm.brand.trim(),
+      supplier: supplyWizardForm.supplier.trim(),
+      category,
+      productType: 'supply',
+      recipeIngredients: [],
+    })
+    setShowSupplyWizardModal(false)
+    setShowProductModal(true)
+  }
+
+  const openRecipeWizardModal = () => {
+    setRecipeWizardForm(createEmptyRecipeWizardForm())
+    setShowRecipeWizardModal(true)
+  }
+
+  const closeRecipeWizardModal = () => {
+    setShowRecipeWizardModal(false)
+    setRecipeWizardForm(createEmptyRecipeWizardForm())
+  }
+
+  const addRecipeWizardIngredientLine = () => {
+    setRecipeWizardForm((current) => ({
+      ...current,
+      ingredients: [...(current.ingredients || []), createRecipeIngredientLine()],
+    }))
+  }
+
+  const removeRecipeWizardIngredientLine = (lineId) => {
+    setRecipeWizardForm((current) => {
+      const remaining = (current.ingredients || []).filter((line) => line.id !== lineId)
+      return {
+        ...current,
+        ingredients: remaining.length > 0 ? remaining : [createRecipeIngredientLine()],
+      }
+    })
+  }
+
+  const updateRecipeWizardIngredientLine = (lineId, field, value) => {
+    setRecipeWizardForm((current) => ({
+      ...current,
+      ingredients: (current.ingredients || []).map((line) =>
+        line.id === lineId ? { ...line, [field]: value } : line,
+      ),
+    }))
+  }
+
+  const continueRecipeWizard = (event) => {
+    event.preventDefault()
+    const cleanedIngredients = (recipeWizardForm.ingredients || [])
+      .map((ingredient) => ({
+        id: ingredient.id || crypto.randomUUID(),
+        supplyProductId: String(ingredient.supplyProductId || '').trim(),
+        quantity: Number(ingredient.quantity),
+      }))
+      .filter(
+        (ingredient) =>
+          ingredient.supplyProductId &&
+          Number.isFinite(ingredient.quantity) &&
+          ingredient.quantity > 0 &&
+          products.some((item) => item.id === ingredient.supplyProductId && item.productType === 'supply'),
+      )
+      .map((ingredient) => ({
+        ...ingredient,
+        quantity: String(ingredient.quantity),
+      }))
+
+    if (cleanedIngredients.length === 0) return
+
+    setEditingProductId('')
+    setProductModalType('recipe')
+    setNewProduct({
+      ...emptyProductForm,
+      productType: 'recipe',
+      recipeIngredients: cleanedIngredients,
+    })
+    setShowRecipeWizardModal(false)
     setShowProductModal(true)
   }
 
   const openEditProductModal = (product) => {
     setEditingProductId(product.id)
+    setProductModalType(PRODUCT_TYPES.includes(product.productType) ? product.productType : 'general')
     setNewProduct({
       code: product.code,
       name: product.name,
       brand: product.brand,
       supplier: product.supplier,
+      unit: product.unit || '',
+      productType: PRODUCT_TYPES.includes(product.productType) ? product.productType : 'general',
+      recipeIngredients: Array.isArray(product.recipeIngredients)
+        ? product.recipeIngredients.map((ingredient) => ({
+            id: ingredient.id || crypto.randomUUID(),
+            supplyProductId: ingredient.supplyProductId || '',
+            quantity: String(ingredient.quantity ?? '1'),
+          }))
+        : [],
       category: product.category,
       cost: String(product.cost),
       price: String(product.price),
@@ -2570,7 +3342,31 @@ function App() {
   const closeProductModal = () => {
     setShowProductModal(false)
     setEditingProductId('')
+    setProductModalType('general')
     setNewProduct(emptyProductForm)
+  }
+
+  const addRecipeIngredientLine = () => {
+    setNewProduct((current) => ({
+      ...current,
+      recipeIngredients: [...(current.recipeIngredients || []), createRecipeIngredientLine()],
+    }))
+  }
+
+  const removeRecipeIngredientLine = (lineId) => {
+    setNewProduct((current) => ({
+      ...current,
+      recipeIngredients: (current.recipeIngredients || []).filter((line) => line.id !== lineId),
+    }))
+  }
+
+  const updateRecipeIngredientLine = (lineId, field, value) => {
+    setNewProduct((current) => ({
+      ...current,
+      recipeIngredients: (current.recipeIngredients || []).map((line) =>
+        line.id === lineId ? { ...line, [field]: value } : line,
+      ),
+    }))
   }
 
   const closeSupplierModal = () => {
@@ -3149,17 +3945,50 @@ function App() {
   const saveProduct = (event) => {
     event.preventDefault()
     const cleanedCode = newProduct.code.trim().toUpperCase()
+    const cleanedProductType = PRODUCT_TYPES.includes(newProduct.productType)
+      ? newProduct.productType
+      : productModalType
     const cleanedCategory = String(newProduct.category || '').trim() || 'General'
+    const cleanedRecipeIngredients =
+      cleanedProductType === 'recipe'
+        ? (newProduct.recipeIngredients || [])
+            .map((ingredient) => ({
+              id: ingredient.id || crypto.randomUUID(),
+              supplyProductId: String(ingredient.supplyProductId || '').trim(),
+              quantity: Number(ingredient.quantity),
+            }))
+            .filter(
+              (ingredient) =>
+                ingredient.supplyProductId &&
+                Number.isFinite(ingredient.quantity) &&
+                ingredient.quantity > 0 &&
+                products.some((item) => item.id === ingredient.supplyProductId && item.productType === 'supply'),
+            )
+            .map((ingredient) => ({ ...ingredient, quantity: String(ingredient.quantity) }))
+        : []
+
+    const existingProduct = editingProductId
+      ? products.find((product) => product.id === editingProductId) || null
+      : null
+    const normalizedStock = Number(newProduct.stock)
+
     const payload = {
       id: editingProductId || crypto.randomUUID(),
       code: cleanedCode,
       name: newProduct.name.trim(),
       brand: newProduct.brand.trim(),
       supplier: newProduct.supplier.trim(),
+      unit: String(newProduct.unit || '').trim(),
+      productType: cleanedProductType,
+      recipeIngredients: cleanedRecipeIngredients,
       category: cleanedCategory,
       cost: Number(newProduct.cost),
       price: Number(newProduct.price),
-      stock: Number(newProduct.stock),
+      stock: normalizedStock,
+      totalStock:
+        cleanedProductType === 'supply'
+          ? Number(existingProduct?.totalStock ?? normalizedStock)
+          : normalizedStock,
       minStock: Number(newProduct.minStock),
       locationArea: newProduct.locationArea.trim(),
       locationBin: newProduct.locationBin.trim(),
@@ -3229,6 +4058,10 @@ function App() {
 
   const addToCart = (product) => {
     if (!currentUser) return
+    if (product?.productType === 'supply') {
+      setScannerNotice('Los insumos no se venden en Punto de Venta.')
+      return
+    }
 
     setCart((current) => {
       const found = current.find((item) => item.id === product.id)
@@ -3249,7 +4082,7 @@ function App() {
     if (!code) return
     if (!cashBox.isOpen || activeTab !== 'sales' || !currentUser) return
 
-    const product = products.find((item) => item.code.toUpperCase() === code)
+    const product = sellableProducts.find((item) => item.code.toUpperCase() === code)
     if (!product) {
       setScannerNotice(`Codigo no encontrado: ${code}`)
       return
@@ -3301,7 +4134,7 @@ function App() {
       if (scanTimerRef.current) clearTimeout(scanTimerRef.current)
       if (scanNoticeTimerRef.current) clearTimeout(scanNoticeTimerRef.current)
     }
-  }, [activeTab, cashBox.isOpen, currentUser, products])
+  }, [activeTab, cashBox.isOpen, currentUser, sellableProducts])
 
   const updateCartQty = (productId, qty) => {
     // Permite editar el campo sin borrar el articulo al limpiar temporalmente el input.
@@ -3320,6 +4153,22 @@ function App() {
 
   const removeFromCart = (productId) => {
     setCart((current) => current.filter((item) => item.id !== productId))
+  }
+
+  const handlePostSaleTicketDelivery = (sale, options = {}) => {
+    if (!sale) return
+    const hidePendingNotice = Boolean(options.hidePendingNotice)
+
+    setTicketDeliveryRequest({ sale, hidePendingNotice })
+    setShowTicketDeliveryModal(true)
+
+    if (ticketSettings.digitalTicketEnabled) {
+      openDigitalTicket(sale, { hidePendingNotice })
+    }
+
+    if (ticketSettings.autoPrint) {
+      printTicket(sale, { hidePendingNotice })
+    }
   }
 
   const checkout = () => {
@@ -3370,23 +4219,27 @@ function App() {
     }
 
     setSales((current) => [normalizeSale(sale), ...current])
-    setProducts((current) =>
-      current.map((product) => {
-        const inCart = cart.find((item) => item.id === product.id)
-        if (!inCart) return product
-        return { ...product, stock: product.stock - inCart.quantity }
-      }),
-    )
+    setProducts((current) => {
+      const soldByProductId = cart.reduce((acc, item) => {
+        acc[item.id] = (acc[item.id] || 0) + Number(item.quantity || 0)
+        return acc
+      }, {})
+
+      return current.map((product) => {
+        const soldQty = Number(soldByProductId[product.id] || 0)
+        if (soldQty <= 0) return product
+
+        return {
+          ...product,
+          stock: Number((Math.max(0, Number(product.stock || 0) - soldQty)).toFixed(2)),
+        }
+      })
+    })
     setLastSaleForTicket(sale)
     setCart([])
 
     const normalizedSale = normalizeSale(sale)
-    if (ticketSettings.digitalTicketEnabled) {
-      setTicketDeliveryRequest({ sale: normalizedSale, hidePendingNotice: false })
-      setShowTicketDeliveryModal(true)
-    } else {
-      printTicket(normalizedSale, { hidePendingNotice: false })
-    }
+    handlePostSaleTicketDelivery(normalizedSale, { hidePendingNotice: false })
   }
 
   const closeTicketDeliveryModal = () => {
@@ -3456,12 +4309,7 @@ function App() {
     )
 
     const normalizedSale = normalizeSale(updatedSale)
-    if (ticketSettings.digitalTicketEnabled) {
-      setTicketDeliveryRequest({ sale: normalizedSale, hidePendingNotice: true })
-      setShowTicketDeliveryModal(true)
-    } else {
-      printTicket(normalizedSale, { hidePendingNotice: true })
-    }
+    handlePostSaleTicketDelivery(normalizedSale, { hidePendingNotice: true })
     closePendingTicketModal()
   }
 
@@ -3726,7 +4574,7 @@ function App() {
                     <path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-4h-1V11a6 6 0 0 0-5-5.91V4a1 1 0 0 0-2 0v1.09A6 6 0 0 0 6 11v7H5a1 1 0 0 0 0 2h14a1 1 0 1 0 0-2Z" />
                   </svg>
                 </span>
-                <span className="sr-only">Alertas de inventario y pagos de crédito</span>
+                <span className="sr-only">Alertas de inventario, recetas y pagos de crédito</span>
                 {alertBadgeCount > 0 && <span className="alert-badge">{alertBadgeCount}</span>}
               </button>
             </div>
@@ -3770,6 +4618,51 @@ function App() {
                           >
                             Confirmar pago
                           </button>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {recipeSupplyNotifications.length > 0 && (
+                  <section>
+                    <h3>Recetas con insumos insuficientes</h3>
+                    <div className="stack">
+                      {recipeSupplyNotifications.map((notice) => (
+                        <article key={notice.recipeId} className="alert-payment-item">
+                          <p>
+                            <strong>{notice.recipeCode}</strong> {notice.recipeName}
+                          </p>
+                          {notice.reason === 'sin-formula' && (
+                            <p>La receta no tiene formula de insumos configurada.</p>
+                          )}
+                          {notice.reason === 'low-capacity' && (
+                            <p>
+                              Capacidad estimada: {notice.maxUnits} | Minimo receta {notice.minStock}
+                            </p>
+                          )}
+                          {notice.shortages.length > 0 && (
+                            <div className="stack">
+                              {notice.shortages.slice(0, 4).map((shortage) => (
+                                <p key={shortage.id} className="meta-small">
+                                  {shortage.code} {shortage.name}: requiere {shortage.requiredQty} | disponible{' '}
+                                  {shortage.availableQty}
+                                </p>
+                              ))}
+                              {notice.shortages.length > 4 && (
+                                <p className="meta-small">+{notice.shortages.length - 4} insumo(s) con faltante</p>
+                              )}
+                            </div>
+                          )}
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              className="ghost-btn"
+                              onClick={() => openRecipeFromAlert(notice)}
+                            >
+                              Abrir receta
+                            </button>
+                          )}
                         </article>
                       ))}
                     </div>
@@ -3986,7 +4879,7 @@ function App() {
         <section className="panel inventory-full">
           <div className="section-head">
             <h2>Inventario General</h2>
-            <button type="button" onClick={openCreateProductModal}>
+            <button type="button" onClick={() => openCreateProductModal('general')}>
               Agregar producto
             </button>
           </div>
@@ -4001,7 +4894,7 @@ function App() {
           </label>
 
           <div className="stack">
-            {Object.entries(groupedInventory).map(([supplierName, items]) => (
+            {Object.entries(groupedGeneralInventory).map(([supplierName, items]) => (
               <article key={supplierName} className="card">
                 <h3>{supplierName}</h3>
                 <div className="table-wrap">
@@ -4012,6 +4905,7 @@ function App() {
                         <th>Codigo</th>
                         <th>Producto</th>
                         <th>Marca</th>
+                        <th>Tipo</th>
                         <th>Categoria</th>
                         <th>Costo</th>
                         <th>Venta</th>
@@ -4034,6 +4928,13 @@ function App() {
                           <td>{product.code}</td>
                           <td>{product.name}</td>
                           <td>{product.brand || '-'}</td>
+                          <td>
+                            {product.productType === 'recipe'
+                              ? 'Receta'
+                              : product.productType === 'supply'
+                                ? 'Insumo'
+                                : 'General'}
+                          </td>
                           <td>{product.category}</td>
                           <td>{currency.format(product.cost)}</td>
                           <td>{currency.format(product.price)}</td>
@@ -4048,6 +4949,13 @@ function App() {
                             >
                               Editar
                             </button>
+                            <button
+                              type="button"
+                              className="ghost-btn"
+                              onClick={() => removeProduct(product)}
+                            >
+                              Eliminar
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -4056,11 +4964,121 @@ function App() {
                 </div>
               </article>
             ))}
-            {Object.keys(groupedInventory).length === 0 && (
+            {Object.keys(groupedGeneralInventory).length === 0 && (
               <p className="empty">No hay productos que coincidan con la busqueda.</p>
             )}
           </div>
         </section>
+      )}
+
+      {activeTab === 'admin' && isAdmin && adminSection === 'supplies-inventory' && (
+        <section className="panel inventory-full">
+          <div className="section-head">
+            <h2>Inventario</h2>
+            <div className="chipactli-supply-actions">
+              <input
+                className="chipactli-supply-search"
+                placeholder="🔍 Buscar insumo..."
+                value={supplyInventorySearchTerm}
+                onChange={(event) => setSupplyInventorySearchTerm(event.target.value)}
+              />
+              <button type="button" onClick={openSupplyModal}>
+                ➥ Agregar Insumo
+              </button>
+            </div>
+          </div>
+
+          <div className="grid-metrics">
+            <article className="metric-card">
+              <h2>Total de Insumos</h2>
+              <p>{supplyInvestmentMetrics.totalSupplies}</p>
+            </article>
+            <article className="metric-card">
+              <h2>Inversión Total</h2>
+              <p>{currency.format(supplyInvestmentMetrics.totalInvestment)}</p>
+            </article>
+            <article className="metric-card">
+              <h2>Inversión Recuperada</h2>
+              <p>{currency.format(supplyInvestmentMetrics.recoveredInvestment)}</p>
+            </article>
+            <article className="metric-card">
+              <h2>Inversión Neta</h2>
+              <p>{currency.format(supplyInvestmentMetrics.netInvestment)}</p>
+            </article>
+          </div>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Nombre</th>
+                  <th>Proveedor</th>
+                  <th>Unidad</th>
+                  <th>Cantidad Total</th>
+                  <th>Disponible</th>
+                  <th>Costo Total</th>
+                  <th>Costo/Unidad</th>
+                  <th>Porcentaje</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {supplyInventoryTableRows.length === 0 && (
+                  <tr>
+                    <td colSpan="10" className="empty">No hay insumos que coincidan con la busqueda.</td>
+                  </tr>
+                )}
+                {supplyInventoryTableRows.map((row) => {
+                  if (row.kind === 'supplier') {
+                    return (
+                      <tr key={row.id} className="chipactli-supplier-row">
+                        <td colSpan="10">Proveedor: {row.supplierName}</td>
+                      </tr>
+                    )
+                  }
+
+                  const product = row.product
+                  const stock = Number(product.stock || 0)
+                  const totalStock = Number(product.totalStock ?? product.stock ?? 0)
+                  const percentage =
+                    totalStock > 0 ? Math.min(100, Math.max(0, (stock / totalStock) * 100)) : 0
+
+                  return (
+                    <tr key={row.id}>
+                      <td>{product.code}</td>
+                      <td>{product.name}</td>
+                      <td>{product.supplier || 'Sin proveedor'}</td>
+                      <td>{product.unit || '-'}</td>
+                      <td>{totalStock.toFixed(2)}</td>
+                      <td>{stock.toFixed(2)}</td>
+                      <td>{currency.format(totalStock * Number(product.cost || 0))}</td>
+                      <td>{currency.format(Number(product.cost || 0))}</td>
+                      <td>
+                        <div className="chipactli-percentage-wrap">
+                          <div className="chipactli-percentage-fill" style={{ width: `${percentage.toFixed(0)}%` }} />
+                          <span>{percentage.toFixed(0)}%</span>
+                        </div>
+                      </td>
+                      <td>
+                        <button type="button" className="ghost-btn" onClick={() => openEditProductModal(product)}>
+                          ✏️
+                        </button>
+                        <button type="button" className="ghost-btn" onClick={() => removeProduct(product)}>
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'admin' && isAdmin && adminSection === 'recipes' && (
+        <Recetas />
       )}
 
       {activeTab === 'admin' && isAdmin && adminSection === 'dashboard' && (
@@ -4696,71 +5714,73 @@ function App() {
               </button>
             </div>
 
-            <label className="switch-line">
-              <span>Mostrar fecha y hora</span>
-              <span className="switch-control">
-                <input
-                  type="checkbox"
-                  checked={ticketSettings.showDate}
-                  onChange={(event) =>
-                    setTicketSettings((current) => ({ ...current, showDate: event.target.checked }))
-                  }
-                />
-                <span className="switch-slider" />
-              </span>
-            </label>
-            <label className="switch-line">
-              <span>Mostrar cajero</span>
-              <span className="switch-control">
-                <input
-                  type="checkbox"
-                  checked={ticketSettings.showCashier}
-                  onChange={(event) =>
-                    setTicketSettings((current) => ({ ...current, showCashier: event.target.checked }))
-                  }
-                />
-                <span className="switch-slider" />
-              </span>
-            </label>
-            <label className="switch-line">
-              <span>Mostrar codigo de producto</span>
-              <span className="switch-control">
-                <input
-                  type="checkbox"
-                  checked={ticketSettings.showProductCode}
-                  onChange={(event) =>
-                    setTicketSettings((current) => ({ ...current, showProductCode: event.target.checked }))
-                  }
-                />
-                <span className="switch-slider" />
-              </span>
-            </label>
-            <label className="switch-line">
-              <span>Ticket digital</span>
-              <span className="switch-control">
-                <input
-                  type="checkbox"
-                  checked={ticketSettings.digitalTicketEnabled}
-                  onChange={(event) =>
-                    setTicketSettings((current) => ({ ...current, digitalTicketEnabled: event.target.checked }))
-                  }
-                />
-                <span className="switch-slider" />
-              </span>
-            </label>
-            <label className="switch-line">
-              <span>Imprimir automaticamente al cobrar</span>
-              <span className="switch-control">
-                <input
-                  type="checkbox"
-                  checked={ticketSettings.autoPrint}
-                  onChange={(event) =>
-                    setTicketSettings((current) => ({ ...current, autoPrint: event.target.checked }))
-                  }
-                />
-                <span className="switch-slider" />
-              </span>
-            </label>
+            <div className="ticket-switch-grid">
+              <label className="switch-card">
+                <span className="switch-card-title">Mostrar fecha y hora</span>
+                <span className="switch-control">
+                  <input
+                    type="checkbox"
+                    checked={ticketSettings.showDate}
+                    onChange={(event) =>
+                      setTicketSettings((current) => ({ ...current, showDate: event.target.checked }))
+                    }
+                  />
+                  <span className="switch-slider" />
+                </span>
+              </label>
+              <label className="switch-card">
+                <span className="switch-card-title">Mostrar cajero</span>
+                <span className="switch-control">
+                  <input
+                    type="checkbox"
+                    checked={ticketSettings.showCashier}
+                    onChange={(event) =>
+                      setTicketSettings((current) => ({ ...current, showCashier: event.target.checked }))
+                    }
+                  />
+                  <span className="switch-slider" />
+                </span>
+              </label>
+              <label className="switch-card">
+                <span className="switch-card-title">Mostrar codigo de producto</span>
+                <span className="switch-control">
+                  <input
+                    type="checkbox"
+                    checked={ticketSettings.showProductCode}
+                    onChange={(event) =>
+                      setTicketSettings((current) => ({ ...current, showProductCode: event.target.checked }))
+                    }
+                  />
+                  <span className="switch-slider" />
+                </span>
+              </label>
+              <label className="switch-card">
+                <span className="switch-card-title">Ticket digital</span>
+                <span className="switch-control">
+                  <input
+                    type="checkbox"
+                    checked={ticketSettings.digitalTicketEnabled}
+                    onChange={(event) =>
+                      setTicketSettings((current) => ({ ...current, digitalTicketEnabled: event.target.checked }))
+                    }
+                  />
+                  <span className="switch-slider" />
+                </span>
+              </label>
+              <label className="switch-card">
+                <span className="switch-card-title">Imprimir automaticamente al cobrar</span>
+                <span className="switch-control">
+                  <input
+                    type="checkbox"
+                    checked={ticketSettings.autoPrint}
+                    onChange={(event) =>
+                      setTicketSettings((current) => ({ ...current, autoPrint: event.target.checked }))
+                    }
+                  />
+                  <span className="switch-slider" />
+                </span>
+              </label>
+            </div>
           </form>
 
           <div className="card">
@@ -5482,6 +6502,22 @@ function App() {
                 </button>
               )}
             </div>
+
+            {ticketDeliveryRequest?.sale && (
+              <>
+                <p className="meta-small" style={{ marginTop: '0.55rem' }}>
+                  Vista previa del ticket:
+                </p>
+                <div className="ticket-preview-wrap" style={{ fontSize: `${Number(ticketSettings.fontScale) || 1}rem` }}>
+                  <TicketPreview
+                    sale={ticketDeliveryRequest.sale}
+                    settings={ticketSettings}
+                    isEmpty={false}
+                    hidePendingNotice={Boolean(ticketDeliveryRequest?.hidePendingNotice)}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </Modal>
       )}
@@ -5735,8 +6771,287 @@ function App() {
         </Modal>
       )}
 
+      {recipeDeleteModal.open && recipeDeleteModal.product && (
+        <Modal
+          title="Eliminar piezas de receta"
+          onClose={closeRecipeDeleteModal}
+        >
+          <div className="card stack">
+            <p>
+              {`Receta ${recipeDeleteModal.product.code} - ${recipeDeleteModal.product.name}`}
+            </p>
+            <p className="meta-small">
+              {`Stock actual: ${Math.max(0, Math.floor(Number(recipeDeleteModal.product.stock || 0)))}`}
+            </p>
+            <label>
+              Cantidad de piezas a devolver a insumos
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="Ej. 1"
+                value={recipeDeleteModal.quantity}
+                onChange={(event) =>
+                  setRecipeDeleteModal((current) => ({
+                    ...current,
+                    quantity: String(event.target.value || '').replace(/[^0-9]/g, ''),
+                  }))
+                }
+              />
+            </label>
+            <div className="row-actions">
+              <button type="button" className="ghost-btn" onClick={closeRecipeDeleteModal}>
+                Cancelar
+              </button>
+              <button type="button" className="ghost-btn" onClick={() => confirmRecipeDeletePieces('all')}>
+                Devolver todo
+              </button>
+              <button type="button" onClick={() => confirmRecipeDeletePieces('partial')}>
+                Devolver cantidad
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      <div id="modalConfirmacion" className="modal" style={{ display: 'none' }}>
+        <div className="contenidoModal" style={{ maxWidth: '520px', width: '92vw' }}>
+          <div className="encabezadoModal">
+            <h3 id="tituloConfirmacion">Confirmar</h3>
+          </div>
+          <div className="cajaFormulario">
+            <p id="textoConfirmacion" style={{ margin: 0 }}></p>
+            <div className="row-actions">
+              <button id="btnConfirmacionCancelar" type="button" className="ghost-btn">
+                Cancelar
+              </button>
+              <button id="btnConfirmacionAceptar" type="button">
+                Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showSupplyModal && (
+        <Modal title="Agregar Insumo" onClose={closeSupplyModal}>
+          <form className="modal-form" onSubmit={saveSupply}>
+            <div className="chipactli-supply-modal-code-name modal-span-full">
+              <input
+                value={supplyCreateForm.code}
+                onChange={(event) =>
+                  setSupplyCreateForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))
+                }
+                placeholder="Codigo"
+                required
+              />
+              <input
+                value={supplyCreateForm.name}
+                onChange={(event) =>
+                  setSupplyCreateForm((current) => ({ ...current, name: event.target.value }))
+                }
+                placeholder="Nombre"
+                required
+              />
+            </div>
+            <div className="chipactli-supply-modal-details modal-span-full">
+              <select
+                value={supplyCreateForm.supplier}
+                onChange={(event) =>
+                  setSupplyCreateForm((current) => ({ ...current, supplier: event.target.value }))
+                }
+                required
+              >
+                <option value="">Selecciona proveedor</option>
+                {supplierNames.map((supplierName) => (
+                  <option key={supplierName} value={supplierName}>
+                    {supplierName}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={supplyCreateForm.unit}
+                onChange={(event) =>
+                  setSupplyCreateForm((current) => ({ ...current, unit: event.target.value }))
+                }
+                required
+              >
+                <option value="">Unidad</option>
+                {SUPPLY_UNIT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={supplyCreateForm.quantity}
+                onChange={(event) =>
+                  setSupplyCreateForm((current) => ({ ...current, quantity: event.target.value }))
+                }
+                placeholder="Cantidad"
+                required
+              />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={supplyCreateForm.totalCost}
+                onChange={(event) =>
+                  setSupplyCreateForm((current) => ({ ...current, totalCost: event.target.value }))
+                }
+                placeholder="Costo"
+                required
+              />
+            </div>
+            <button type="submit">Guardar</button>
+          </form>
+        </Modal>
+      )}
+
+      {showSupplyWizardModal && (
+        <Modal title="Alta de insumo - Paso 1" onClose={closeSupplyWizardModal}>
+          <form className="modal-form" onSubmit={continueSupplyWizard}>
+            <p className="meta-small">
+              Captura primero los datos base del insumo. En el siguiente paso completarás inventario.
+            </p>
+            <label>
+              Codigo unico
+              <input
+                value={supplyWizardForm.code}
+                onChange={(event) =>
+                  setSupplyWizardForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))
+                }
+                placeholder="Ejemplo: INS001"
+                required
+              />
+            </label>
+            <label>
+              Nombre del insumo
+              <input
+                value={supplyWizardForm.name}
+                onChange={(event) =>
+                  setSupplyWizardForm((current) => ({ ...current, name: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <label>
+              Marca
+              <input
+                value={supplyWizardForm.brand}
+                onChange={(event) =>
+                  setSupplyWizardForm((current) => ({ ...current, brand: event.target.value }))
+                }
+              />
+            </label>
+            <label>
+              Proveedor
+              <select
+                value={supplyWizardForm.supplier}
+                onChange={(event) =>
+                  setSupplyWizardForm((current) => ({ ...current, supplier: event.target.value }))
+                }
+              >
+                <option value="">Sin proveedor</option>
+                {supplierNames.map((supplierName) => (
+                  <option key={supplierName} value={supplierName}>
+                    {supplierName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Categoria
+              <input
+                value={supplyWizardForm.category}
+                onChange={(event) =>
+                  setSupplyWizardForm((current) => ({ ...current, category: event.target.value }))
+                }
+                placeholder="Categoria del insumo"
+              />
+            </label>
+            <button type="submit">Continuar</button>
+          </form>
+        </Modal>
+      )}
+
+      {showRecipeWizardModal && (
+        <Modal title="Alta de receta - Paso 1" onClose={closeRecipeWizardModal}>
+          <form className="modal-form" onSubmit={continueRecipeWizard}>
+            <p className="meta-small">
+              Define primero la formula de la receta. Después continuarás con los datos de inventario.
+            </p>
+            <div className="card modal-span-full">
+              <div className="section-head">
+                <h3>Formula de receta (insumos)</h3>
+                <button type="button" className="ghost-btn" onClick={addRecipeWizardIngredientLine}>
+                  Agregar insumo
+                </button>
+              </div>
+
+              {(recipeWizardForm.ingredients || []).map((line) => (
+                <div key={line.id} className="row-actions modal-span-full">
+                  <select
+                    value={line.supplyProductId}
+                    onChange={(event) =>
+                      updateRecipeWizardIngredientLine(line.id, 'supplyProductId', event.target.value)
+                    }
+                    required
+                  >
+                    <option value="">Selecciona insumo</option>
+                    {supplyProductOptions.map((supply) => (
+                      <option key={supply.id} value={supply.id}>
+                        {supply.code} - {supply.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    placeholder="Cantidad por unidad"
+                    value={line.quantity}
+                    onChange={(event) =>
+                      updateRecipeWizardIngredientLine(line.id, 'quantity', event.target.value)
+                    }
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    onClick={() => removeRecipeWizardIngredientLine(line.id)}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button type="submit">Continuar</button>
+          </form>
+        </Modal>
+      )}
+
       {showProductModal && (
-        <Modal title={editingProductId ? 'Editar producto' : 'Nuevo producto'} onClose={closeProductModal}>
+        <Modal
+          title={
+            editingProductId
+              ? productModalType === 'recipe'
+                ? 'Editar receta'
+                : productModalType === 'supply'
+                  ? 'Editar insumo'
+                  : 'Editar producto'
+              : productModalType === 'recipe'
+                ? 'Nueva receta'
+                : productModalType === 'supply'
+                  ? 'Nuevo insumo'
+                  : 'Nuevo producto'
+          }
+          onClose={closeProductModal}
+        >
           <form className="modal-form" onSubmit={saveProduct}>
             <label>
               Codigo unico
@@ -5776,6 +7091,53 @@ function App() {
                 ))}
               </select>
             </label>
+            {productModalType === 'recipe' && Boolean(editingProductId) && (
+              <div className="modal-span-full card">
+                <div className="section-head">
+                  <h3>Formula de receta (insumos)</h3>
+                  <button type="button" className="ghost-btn" onClick={addRecipeIngredientLine}>
+                    Agregar insumo
+                  </button>
+                </div>
+
+                {(newProduct.recipeIngredients || []).length === 0 && (
+                  <p className="meta-small">Sin insumos cargados. Agrega al menos un insumo para esta receta.</p>
+                )}
+
+                {(newProduct.recipeIngredients || []).map((line) => (
+                  <div key={line.id} className="row-actions modal-span-full">
+                    <select
+                      value={line.supplyProductId}
+                      onChange={(event) =>
+                        updateRecipeIngredientLine(line.id, 'supplyProductId', event.target.value)
+                      }
+                    >
+                      <option value="">Selecciona insumo</option>
+                      {supplyProductOptions.map((supply) => (
+                        <option key={supply.id} value={supply.id}>
+                          {supply.code} - {supply.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="0.001"
+                      step="0.001"
+                      placeholder="Cantidad por unidad"
+                      value={line.quantity}
+                      onChange={(event) => updateRecipeIngredientLine(line.id, 'quantity', event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => removeRecipeIngredientLine(line.id)}
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <label className="modal-span-full">
               Categoria
               <div className="row-actions">
@@ -5863,7 +7225,15 @@ function App() {
               <input type="file" accept="image/*" onChange={handleImageUpload} />
             </label>
             {newProduct.imageUrl && <img src={newProduct.imageUrl} alt="Vista previa" className="product-preview" />}
-            <button type="submit">{editingProductId ? 'Guardar cambios' : 'Guardar producto'}</button>
+            <button type="submit">
+              {editingProductId
+                ? 'Guardar cambios'
+                : productModalType === 'recipe'
+                  ? 'Guardar receta'
+                  : productModalType === 'supply'
+                    ? 'Guardar insumo'
+                    : 'Guardar producto'}
+            </button>
           </form>
         </Modal>
       )}

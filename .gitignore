@@ -29,6 +29,7 @@ frontend/dist-ssr/
 
 # Build outputs (desktop/electron)
 release/
+release-standalone/
 *.exe
 *.msi
 *.blockmap

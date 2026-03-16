@@ -26,12 +26,26 @@
     "productName": "Sistema Punto de Venta",
     "artifactName": "Sistema-Punto-de-Venta-Setup-${version}.${ext}",
     "directories": {
-      "output": "release"
+      "output": "release-standalone"
     },
     "files": [
       "desktop/**/*",
       "frontend/dist/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend/index.js",
+        "to": "backend/index.js"
+      },
+      {
+        "from": "backend/package.json",
+        "to": "backend/package.json"
+      },
+      {
+        "from": "backend/node_modules",
+        "to": "backend/node_modules"
+      }
     ],
     "win": {
       "icon": "desktop/assets/pos-icon.ico",

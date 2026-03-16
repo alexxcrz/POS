@@ -6,9 +6,17 @@
   --brand: #0f766e;
   --brand-dark: #115e59;
   --accent: #f59e0b;
+  --tertiary: #1f2933;
   --line: #d6dde3;
   --card: #ffffff;
   --danger: #b91c1c;
+  --brand-soft: #e9f6f3;
+  --brand-soft-2: #d9f0eb;
+  --accent-soft: #fff4de;
+  --panel-bg: #fafdff;
+  --panel-border: #d6dde3;
+  --input-border: #d8dee5;
+  --brand-rgb: 15, 118, 110;
 }
 
 *,
@@ -25,6 +33,12 @@
   max-width: min(1700px, 98vw);
   margin: 0 auto;
   padding: 1.25rem;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 8% 10%, var(--brand-soft), transparent 26%),
+    radial-gradient(circle at 90% 90%, var(--accent-soft), transparent 28%),
+    linear-gradient(160deg, color-mix(in srgb, var(--bg-1) 82%, #ffffff), color-mix(in srgb, var(--bg-2) 88%, #ffffff));
+  border-radius: 18px;
 }
 
 .auth-shell {
@@ -32,16 +46,16 @@
   display: grid;
   place-items: center;
   background:
-    radial-gradient(circle at 18% 15%, rgba(15, 118, 110, 0.14), transparent 36%),
-    radial-gradient(circle at 82% 85%, rgba(245, 158, 11, 0.11), transparent 34%),
-    linear-gradient(165deg, #f6f3ea 0%, #f7fcfb 48%, #f1f7f6 100%);
+    radial-gradient(circle at 18% 15%, rgba(var(--brand-rgb), 0.14), transparent 36%),
+    radial-gradient(circle at 82% 85%, var(--accent-soft), transparent 34%),
+    linear-gradient(165deg, var(--bg-1) 0%, var(--bg-2) 48%, var(--brand-soft) 100%);
 }
 
 .auth-panel {
   width: min(540px, 94vw);
   border-radius: 20px;
-  background: linear-gradient(158deg, #ffffff 0%, #f6fbfa 52%, #eef8f5 100%);
-  border: 1px solid #d3e4dd;
+  background: linear-gradient(158deg, #ffffff 0%, var(--brand-soft) 52%, var(--bg-2) 100%);
+  border: 1px solid var(--panel-border);
   box-shadow: 0 20px 44px rgba(17, 58, 49, 0.14);
   padding: 1.2rem;
 }
@@ -57,9 +71,9 @@
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  background: #e6f5f1;
-  color: #0f5f5a;
-  border: 1px solid #c9e4db;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  border: 1px solid var(--panel-border);
   padding: 0.24rem 0.58rem;
   font-size: 0.76rem;
   font-weight: 700;
@@ -69,12 +83,12 @@
 
 .auth-subtitle {
   margin: 0 0 0.7rem;
-  color: #4e626f;
+  color: var(--ink-soft);
 }
 
 .auth-form-pro {
-  border: 1px solid #dceae4;
-  background: #fcfffe;
+  border: 1px solid var(--panel-border);
+  background: linear-gradient(180deg, #fcfffe, var(--brand-soft));
   border-radius: 14px;
   padding: 0.8rem;
 }
@@ -130,10 +144,10 @@
 .hero-logo {
   width: 66px;
   height: 66px;
-  border-radius: 10px;
+  border-radius: 50%;
   object-fit: cover;
-  border: 1px solid #d7decb;
-  background: #fff;
+  border: 1px solid var(--panel-border);
+  background: var(--card);
   justify-self: center;
 }
 
@@ -157,7 +171,7 @@
 
 .hero-datetime {
   margin: 0;
-  color: #3e5a67;
+  color: var(--ink-soft);
   font-weight: 700;
   text-transform: capitalize;
   text-align: right;
@@ -413,12 +427,68 @@ a[href*='whatsapp.com/send'] img,
   right: 0;
   margin-top: 0.5rem;
   width: min(360px, 84vw);
-  background: #f9fcff;
-  border: 1px solid #cddbe7;
+  background: linear-gradient(180deg, var(--card), var(--brand-soft));
+  border: 1px solid var(--panel-border);
   border-radius: 12px;
   padding: 0.75rem;
   z-index: 5;
   box-shadow: 0 10px 28px rgba(28, 43, 54, 0.18);
+}
+
+.chipactli-supply-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  justify-content: center;
+}
+
+.chipactli-supply-search {
+  width: 220px;
+  max-width: 220px;
+}
+
+.chipactli-supplier-row td {
+  background: var(--brand-soft);
+  font-weight: 700;
+}
+
+.chipactli-percentage-wrap {
+  position: relative;
+  width: 110px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+}
+
+.chipactli-percentage-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, var(--accent), var(--brand));
+}
+
+.chipactli-percentage-wrap span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f2933;
+}
+
+.chipactli-supply-modal-code-name {
+  display: grid;
+  grid-template-columns: 0.55fr 1fr;
+  gap: 8px;
+}
+
+.chipactli-supply-modal-details {
+  display: grid;
+  grid-template-columns: 1.05fr 0.65fr 0.75fr 0.8fr;
+  gap: 8px;
 }
 
 .alert-panel h3 {
@@ -488,23 +558,25 @@ a[href*='whatsapp.com/send'] img,
 .tab {
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: linear-gradient(180deg, #fff, var(--brand-soft));
   color: var(--ink);
   padding: 0.5rem 0.9rem;
 }
 
 .tab-active {
-  background: var(--brand);
+  background: linear-gradient(160deg, var(--brand), var(--brand-dark));
   color: #fff;
   border-color: var(--brand);
+  box-shadow: 0 6px 16px rgba(var(--brand-rgb), 0.28);
 }
 
 .panel {
-  background: var(--card);
-  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel-bg), #ffffff);
+  border: 1px solid var(--panel-border);
   border-radius: 16px;
   padding: 1rem;
   animation: appear 0.3s ease-out;
+  box-shadow: 0 10px 24px rgba(var(--brand-rgb), 0.08);
 }
 
 .grid-metrics {
@@ -514,8 +586,8 @@ a[href*='whatsapp.com/send'] img,
 }
 
 .metric-card {
-  background: linear-gradient(180deg, #ffffff, #fafafa);
-  border: 1px solid #e7ecf1;
+  background: linear-gradient(180deg, #ffffff, var(--brand-soft));
+  border: 1px solid var(--panel-border);
   border-radius: 14px;
   padding: 0.9rem;
 }
@@ -554,9 +626,9 @@ a[href*='whatsapp.com/send'] img,
   place-content: center;
   text-align: center;
   gap: 0.6rem;
-  border: 2px dashed #d4dde6;
+  border: 2px dashed var(--panel-border);
   border-radius: 12px;
-  background: linear-gradient(180deg, #fbfcfd, #f2f7fa);
+  background: linear-gradient(180deg, #fbfcfd, var(--brand-soft));
 }
 
 .cash-closed h2,
@@ -574,6 +646,7 @@ a[href*='whatsapp.com/send'] img,
 
 .section-head h2 {
   margin: 0;
+  color: var(--brand-dark);
 }
 
 .table-wrap {
@@ -588,7 +661,7 @@ table {
 th,
 td {
   text-align: left;
-  border-bottom: 1px solid #eef2f6;
+  border-bottom: 1px solid var(--panel-border);
   padding: 0.6rem;
   font-size: 0.92rem;
 }
@@ -600,8 +673,8 @@ td.empty {
 .cart-panel,
 .card,
 .cut-form {
-  background: #fffefb;
-  border: 1px solid #e7e3d6;
+  background: linear-gradient(180deg, #fffefb, var(--brand-soft));
+  border: 1px solid var(--panel-border);
   border-radius: 12px;
   padding: 0.9rem;
 }
@@ -619,9 +692,17 @@ select,
 textarea,
 button {
   border-radius: 10px;
-  border: 1px solid #d8dee5;
+  border: 1px solid var(--input-border);
   font: inherit;
   padding: 0.45rem 0.58rem;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(var(--brand-rgb), 0.16);
 }
 
 input,
@@ -633,19 +714,21 @@ textarea {
 }
 
 button {
-  background: var(--brand);
+  background: linear-gradient(160deg, var(--brand), var(--brand-dark));
   color: #fff;
   border-color: var(--brand);
   font-size: 0.78rem;
   line-height: 1.1;
   min-height: 27px;
   padding: 0.34rem 0.5rem;
-  transition: transform 0.18s ease, background 0.18s ease;
+  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 5px 12px rgba(var(--brand-rgb), 0.24);
 }
 
 button:hover {
-  background: var(--brand-dark);
+  background: linear-gradient(160deg, var(--brand-dark), var(--brand));
   transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(var(--brand-rgb), 0.3);
 }
 
 .password-field .password-toggle {
@@ -664,25 +747,25 @@ button:hover {
 }
 
 .ghost-btn {
-  background: #f4faf9;
+  background: linear-gradient(180deg, #ffffff, var(--brand-soft));
   color: var(--brand-dark);
-  border-color: #c8ddd9;
+  border-color: var(--panel-border);
 }
 
 .ghost-btn:hover {
-  background: #e9f5f2;
+  background: linear-gradient(180deg, var(--brand-soft), var(--brand-soft-2));
 }
 
 button:disabled {
-  background: #95a5a6;
-  border-color: #95a5a6;
+  background: var(--panel-border);
+  border-color: var(--panel-border);
 }
 
 .cart-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border: 1px dashed #d0d7de;
+  border: 1px dashed var(--panel-border);
   border-radius: 10px;
   padding: 0.5rem;
   margin-bottom: 0.45rem;
@@ -695,7 +778,7 @@ button:disabled {
 }
 
 .meta-small {
-  color: #637684;
+  color: var(--ink-soft);
   font-size: 0.82rem;
 }
 
@@ -710,14 +793,14 @@ button:disabled {
 }
 
 .remove-btn {
-  background: #dc2626;
-  border-color: #dc2626;
+  background: linear-gradient(180deg, #d13a3a, #b92c2c);
+  border-color: #b92c2c;
   padding: 0.45rem 0.55rem;
   min-width: 34px;
 }
 
 .remove-btn:hover {
-  background: #b91c1c;
+  background: linear-gradient(180deg, #c53232, #a91f1f);
 }
 
 .total {
@@ -743,10 +826,10 @@ button:disabled {
 .pos-chip {
   display: inline-flex;
   align-items: center;
-  border: 1px solid #c9d8df;
+  border: 1px solid var(--panel-border);
   border-radius: 999px;
   padding: 0.2rem 0.48rem;
-  background: #f2f8fb;
+  background: linear-gradient(180deg, var(--card), var(--brand-soft));
   margin-left: 0.1rem;
 }
 
@@ -1064,6 +1147,36 @@ button:disabled {
   margin-bottom: 0.3rem;
 }
 
+.ticket-switch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.35rem;
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.switch-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #d7e1ea;
+  border-radius: 12px;
+  background: #f8fbff;
+  min-height: 96px;
+}
+
+.switch-card-title {
+  font-size: 0.82rem;
+  line-height: 1.25;
+  color: #2a3e4b;
+  font-weight: 700;
+}
+
 .user-management-tabs {
   margin-top: 0;
 }
@@ -1104,7 +1217,7 @@ button:disabled {
 .switch-slider {
   position: absolute;
   inset: 0;
-  background: #ced8e1;
+  background: var(--panel-border);
   border-radius: 999px;
   transition: background 0.2s ease;
 }
@@ -1131,26 +1244,26 @@ button:disabled {
 }
 
 .switch-control input:focus-visible + .switch-slider {
-  outline: 2px solid #1f2933;
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
 .ticket-preview-wrap {
   overflow-x: auto;
   padding: 0.6rem;
-  background: #f8fafc;
-  border: 1px dashed #d5dee7;
+  background: linear-gradient(180deg, var(--card), var(--brand-soft));
+  border: 1px dashed var(--panel-border);
   border-radius: 10px;
 }
 
 .ticket-paper {
   margin: 0 auto;
-  background: #fff;
-  border: 1px solid #d6dde5;
+  background: var(--card);
+  border: 1px solid var(--panel-border);
   border-radius: 8px;
   padding: 0.55rem;
   font-family: 'Courier New', monospace;
-  color: #000;
+  color: var(--ink);
 }
 
 .ticket-head {
@@ -1162,6 +1275,7 @@ button:disabled {
 .ticket-logo {
   width: 26mm;
   max-height: 22mm;
+  border-radius: 50%;
   object-fit: contain;
   margin: 0 auto 0.15rem;
 }
@@ -1256,8 +1370,8 @@ button:disabled {
 .ticket-logo-preview {
   width: 110px;
   height: 110px;
-  object-fit: contain;
-  border-radius: 8px;
+  object-fit: cover;
+  border-radius: 50%;
   border: 1px solid #d6dde5;
   background: #fff;
 }
